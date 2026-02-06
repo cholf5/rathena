@@ -386,11 +386,11 @@ int32 npc_chat_sub(block_list* bl, va_list ap)
 					return 0;
 				}
 				
-				// run the npc script
-				run_script(nd->u.scr.script,lst[i].pos,sd->id,nd->id);
+				// run the npc script (Lua-first, DSL fallback)
+				npc_run_script(nd, lst[i].pos, sd->id, nd->id);
 				return 0;
+				}
 			}
-		}
 	}
 	
 	return 0;

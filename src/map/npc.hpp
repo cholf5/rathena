@@ -20,6 +20,7 @@
 struct block_list;
 struct npc_data;
 struct view_data;
+struct LuaNpcDef;
 
 struct npc_timerevent_list {
 	int32 timer,pos;
@@ -1622,6 +1623,7 @@ int32 npc_touch_areanpc2(mob_data *md); // [Skotlex]
 int32 npc_check_areanpc(int32 flag, int16 m, int16 x, int16 y, int16 range);
 int32 npc_touchnext_areanpc(map_session_data* sd,bool leavemap);
 int32 npc_click(map_session_data* sd, npc_data* nd);
+void npc_run_script(npc_data* nd, int32 pos, int32 rid, int32 oid, const char* event_name = nullptr);
 bool npc_scriptcont(map_session_data* sd, int32 id, bool closing);
 npc_data* npc_checknear(map_session_data* sd, block_list* bl);
 int32 npc_buysellsel(map_session_data* sd, int32 id, int32 type);
@@ -1653,7 +1655,10 @@ int32 npc_get_new_npc_id(void);
 
 int32 npc_addsrcfile(const char* name, bool loadscript);
 void npc_delsrcfile(const char* name);
+int32 npc_validate_srcfiles_lua_only(void);
 int32 npc_parsesrcfile(const char* filepath);
+int32 npc_parseluafile(const char* filepath);
+int32 npc_lua_register_script(const LuaNpcDef& def, const char* filepath);
 void do_clear_npc(void);
 void do_final_npc(void);
 void do_init_npc(void);

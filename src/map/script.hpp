@@ -153,6 +153,8 @@ extern uint32 generic_ui_array_size;
 struct Script_Config {
 	unsigned warn_func_mismatch_argtypes : 1;
 	unsigned warn_func_mismatch_paramnum : 1;
+	unsigned npc_lua_enabled : 1;
+	unsigned npc_dsl_enabled : 1;
 	int32 check_cmdcount;
 	int32 check_gotocount;
 	int32 input_min_value;

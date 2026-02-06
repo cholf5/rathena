@@ -45,6 +45,7 @@
 #include "mob.hpp"
 #include "navi.hpp"
 #include "npc.hpp"
+#include "lua_engine.hpp"
 #include "party.hpp"
 #include "path.hpp"
 #include "pc.hpp"
@@ -185,6 +186,11 @@ char wisp_server_name[NAME_LENGTH] = "Server"; // can be modified in char-server
 int32 console = 0;
 int32 enable_spy = 0; //To enable/disable @spy commands, which consume too much cpu time when sending packets. [Skotlex]
 int32 enable_grf = 0;	//To enable/disable reading maps from GRF files, bypassing mapcache [blackhole89]
+static bool map_npc_script_only = false;
+
+bool map_is_npc_script_only(void){
+	return map_npc_script_only;
+}
 
 #ifdef MAP_GENERATOR
 struct s_generator_options {
@@ -5149,6 +5155,7 @@ void display_helpscreen(bool do_exit)
 	ShowInfo("  -?, -h [--help]\t\tDisplays this help screen.\n");
 	ShowInfo("  -v [--version]\t\tDisplays the server's version.\n");
 	ShowInfo("  --run-once\t\t\tCloses server after loading (testing).\n");
+	ShowInfo("  --npc-script-only\t\tLoad NPC scripts (including OnInit) without DB connections, then exit.\n");
 	ShowInfo("  --map-config <file>\t\tAlternative map-server configuration.\n");
 	ShowInfo("  --battle-config <file>\tAlternative battle configuration.\n");
 	ShowInfo("  --atcommand-config <file>\tAlternative atcommand configuration.\n");
@@ -5281,6 +5288,23 @@ int32 mapgenerator_get_options(int32 argc, char** argv) {
 	return 1;
 }
 
+/**
+ * Read map-specific command line options that should not be handled by the shared CLI parser.
+ */
+static int32 map_get_options(int32 argc, char** argv) {
+	for (int32 i = 1; i < argc; ++i) {
+		const char* arg = argv[i];
+		if (arg == nullptr) {
+			continue;
+		}
+		if (strcmp(arg, "--npc-script-only") == 0) {
+			map_npc_script_only = true;
+			argv[i] = nullptr; // prevent cli_get_options from treating it as unknown
+		}
+	}
+	return 1;
+}
+
 int32 map_data::getMapFlag(int32 flag) const {
 #ifdef DEBUG
 	if (flag < 0 || flag > flags.size()) {
@@ -5352,6 +5376,7 @@ bool MapServer::initialize( int32 argc, char *argv[] ){
 #ifdef MAP_GENERATOR
 	mapgenerator_get_options(argc, argv);
 #endif
+	map_get_options(argc, argv);
 	cli_get_options(argc,argv);
 
 	map_config_read(MAP_CONF_NAME);
@@ -5361,6 +5386,14 @@ bool MapServer::initialize( int32 argc, char *argv[] ){
 
 	// loads npcs
 	map_reloadnpc(false);
+
+	if (map_npc_script_only) {
+		ShowStatus("NPC script-only mode enabled: validating Lua NPC files without SQL initialization.\n");
+		lua_engine_init();
+		const int32 failed = npc_validate_srcfiles_lua_only();
+		lua_engine_final();
+		std::exit(failed == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
 
 	chrif_checkdefaultlogin();
 
