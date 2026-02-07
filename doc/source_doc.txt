@@ -362,6 +362,8 @@ There are 3 ways to compile the project:
 	1) configure.in => configure by autoconf ('autoconf configure.in > configure')
 	2) configure    => Makefile by Makefile.in
 	3) Makefile     => binary by 'make all' or alternative
+  Note (macOS): if PCRE is installed via Homebrew, plain './configure' auto-detects it
+  (supports both /opt/homebrew and /usr/local prefixes), so no extra --with-pcre flag is required.
 
 > cmake (requires C compiler + cmake)
   - CmakeList: Comparable to Makefile, but in a more cross-OS way.

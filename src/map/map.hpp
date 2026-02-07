@@ -1222,6 +1222,7 @@ mob_data * map_id2boss(int32 id);
 
 // reload config file looking only for npcs
 void map_reloadnpc(bool clear);
+bool map_is_npc_script_only(void);
 
 void map_remove_questinfo(int32 m, npc_data *nd);
 

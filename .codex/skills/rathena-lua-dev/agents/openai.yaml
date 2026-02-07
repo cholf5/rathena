@@ -1,0 +1,4 @@
+interface:
+  display_name: "rAthena Lua Dev"
+  short_description: "Continue rAthena Lua migration/dev"
+  default_prompt: "Use $rathena-lua-dev to continue rAthena Lua engine and gameplay script development with established project conventions."

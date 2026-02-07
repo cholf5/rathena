@@ -173,6 +173,9 @@
     <ClInclude Include="mail.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="lua_engine.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="map.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -189,6 +192,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="npc.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="npc_lua.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="packets.hpp">
@@ -307,6 +313,9 @@
     <ClCompile Include="mail.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="lua_engine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="map.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -326,6 +335,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="npc_chat.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="npc_lua.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="party.cpp">

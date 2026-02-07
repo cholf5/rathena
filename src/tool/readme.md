@@ -29,3 +29,18 @@ There are times when a YAML database may have to go through a restructure. When 
 > Database version # is not supported anymore. Minimum version is: #
 
 Simply run the YAMLUpgrade tool and when prompted to upgrade said database, let the tool handle the conversion for you!
+
+## Script2Lua
+
+The script2lua tool converts NPC DSL `.txt` files into Lua schema files (`warps/monsters/mapflags/shops/duplicates/scripts/functions`).
+
+For script bodies, it transpiles DSL labels and statements into Lua functions:
+
+- `scripts[*].main`, `scripts[*].events`, `scripts[*].labels`
+- `functions[*].run`, `functions[*].labels`
+
+Example usage:
+
+`./script2lua npc/re npc-lua/re --recursive --report npc-lua/re/script2lua_report.txt`
+
+This generates `.lua` files mirroring the source tree and writes a migration report listing converted files and unsupported items (if any). It does not emit a monolithic `dsl = [[...]]` payload.

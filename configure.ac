@@ -447,6 +447,32 @@ AC_ARG_WITH(
 	[want_pcre="yes" require_pcre="no"]
 )
 
+#
+# Enable/disable LUA and optionally specify the path (optional library)
+#
+AC_ARG_WITH(
+	[lua],
+	AC_HELP_STRING(
+		[--with-lua@<:@=ARG@:>@],
+		[use LUA 5.4 library, optionally specify installation root (default: auto-detect)]
+	),
+	[
+		if test "$withval" = "no" ; then
+			want_lua="no"
+		else
+			want_lua="yes"
+			require_lua="yes"
+			if test "$withval" != "yes" ; then
+				if test ! -d "$withval" ; then
+					AC_MSG_ERROR([$withval is not a directoy])
+				fi
+				LUA_HOME="$withval"
+			fi
+		fi
+	],
+	[want_lua="yes" require_lua="no"]
+)
+
 
 #
 # Specify the path of the zlib library (required library)
@@ -1283,6 +1309,23 @@ else
 	if test "$host_os" = "FreeBSD" ; then
 		if test -z "$PCRE_HOME" ; then PCRE_HOME="/usr/local"; fi
 	fi
+	if test "$host_os" = "Darwin" ; then
+		if test -z "$PCRE_HOME" ; then
+			if command -v brew >/dev/null 2>&1 ; then
+				PCRE_BREW_PREFIX="`brew --prefix pcre 2>/dev/null`"
+				if test -d "$PCRE_BREW_PREFIX/include" ; then
+					PCRE_HOME="$PCRE_BREW_PREFIX"
+				fi
+			fi
+		fi
+		if test -z "$PCRE_HOME" ; then
+			if test -d "/opt/homebrew/opt/pcre/include" ; then
+				PCRE_HOME="/opt/homebrew/opt/pcre"
+			elif test -d "/usr/local/opt/pcre/include" ; then
+				PCRE_HOME="/usr/local/opt/pcre"
+			fi
+		fi
+	fi
 	if test -z "$PCRE_HOME" ; then
                 AC_SEARCH_LIBS([pcre_study], [pcre], [HAVE_PCRE="yes"], [])
 		if test "$HAVE_PCRE" = "yes" ; then
@@ -1317,6 +1360,88 @@ AC_SUBST([HAVE_PCRE])
 AC_SUBST([PCRE_VERSION])
 AC_SUBST([PCRE_LIBS])
 AC_SUBST([PCRE_CFLAGS])
+
+#
+# LUA library (optional)
+#
+LUA_LIBS=""
+LUA_CFLAGS=""
+LUA_VERSION="unknown"
+HAVE_LUA=""
+
+if test "$want_lua" = "no" ; then
+	AC_MSG_NOTICE([ignoring LUA (optional)])
+else
+	if test -z "$LUA_HOME" ; then
+		AC_PATH_PROG([PKG_CONFIG], [pkg-config], [no])
+		if test "$PKG_CONFIG" != "no" ; then
+			if $PKG_CONFIG --exists lua5.4 ; then
+				LUA_CFLAGS="`$PKG_CONFIG --cflags lua5.4`"
+				LUA_LIBS="`$PKG_CONFIG --libs lua5.4`"
+				LUA_VERSION="`$PKG_CONFIG --modversion lua5.4`"
+			elif $PKG_CONFIG --exists lua-5.4 ; then
+				LUA_CFLAGS="`$PKG_CONFIG --cflags lua-5.4`"
+				LUA_LIBS="`$PKG_CONFIG --libs lua-5.4`"
+				LUA_VERSION="`$PKG_CONFIG --modversion lua-5.4`"
+			fi
+		fi
+	fi
+
+	if test -n "$LUA_HOME" ; then
+		if test -d "$LUA_HOME/include/lua5.4" ; then
+			LUA_CFLAGS="$LUA_CFLAGS -I$LUA_HOME/include/lua5.4"
+		else
+			LUA_CFLAGS="$LUA_CFLAGS -I$LUA_HOME/include"
+		fi
+		LUA_LIBS="$LUA_LIBS -L$LUA_HOME/lib"
+	fi
+
+	if test -z "$LUA_LIBS" ; then
+		AC_CHECK_LIB([lua5.4], [luaL_newstate], [LUA_LIBS="-llua5.4"; HAVE_LUA="yes"], [])
+		if test "$HAVE_LUA" != "yes" ; then
+			AC_CHECK_LIB([lua54], [luaL_newstate], [LUA_LIBS="-llua54"; HAVE_LUA="yes"], [])
+		fi
+		if test "$HAVE_LUA" != "yes" ; then
+			AC_CHECK_LIB([lua], [luaL_newstate], [LUA_LIBS="-llua"; HAVE_LUA="yes"], [])
+		fi
+	fi
+
+	if test "$HAVE_LUA" != "yes" ; then
+		LUA_OLD_LDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS $LUA_LIBS"
+		LUA_OLD_CPPFLAGS="$CPPFLAGS" ; CPPFLAGS="$CPPFLAGS $LUA_CFLAGS"
+		AC_LINK_IFELSE([AC_LANG_PROGRAM(
+			[
+			#include <lua.h>
+			#include <lauxlib.h>
+			],
+			[
+			lua_State *L = luaL_newstate();
+			if( L != 0 ) lua_close(L);
+			])],
+			[HAVE_LUA="yes"],
+			[HAVE_LUA=""]
+		)
+		CPPFLAGS="$LUA_OLD_CPPFLAGS"
+		LDFLAGS="$LUA_OLD_LDFLAGS"
+	fi
+
+	AC_MSG_CHECKING([LUA 5.4 library (optional)])
+	if test "$HAVE_LUA" = "yes" ; then
+		AC_MSG_RESULT([yes ($LUA_VERSION)])
+	else
+		AC_MSG_RESULT([no])
+		if test "$require_lua" = "yes" ; then
+			AC_MSG_ERROR([LUA 5.4 not found or incompatible (requested)])
+		else
+			AC_MSG_NOTICE([disabling LUA (optional)])
+		fi
+	fi
+fi
+
+AC_SUBST([HAVE_LUA])
+AC_SUBST([LUA_VERSION])
+AC_SUBST([LUA_LIBS])
+AC_SUBST([LUA_CFLAGS])
 
 #
 # Host specific stuff

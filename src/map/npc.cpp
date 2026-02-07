@@ -31,9 +31,11 @@
 #include "map.hpp"
 #include "mob.hpp"
 #include "navi.hpp"
+#include "npc_lua.hpp"
 #include "pc.hpp"
 #include "pet.hpp"
 #include "script.hpp" // script_config
+#include "lua_engine.hpp"
 
 using namespace rathena;
 
@@ -122,6 +124,23 @@ std::map<enum npce_event, std::vector<struct script_event_s>> script_event;
 // Static functions
 static npc_data* npc_create_npc( int16 m, int16 x, int16 y );
 static void npc_parsename( npc_data* nd, const char* name, const char* start, const char* buffer, const char* filepath );
+
+void npc_run_script(npc_data* nd, int32 pos, int32 rid, int32 oid, const char* event_name) {
+	if (nd != nullptr && script_config.npc_lua_enabled) {
+		bool executed = false;
+		if (event_name != nullptr && event_name[0] != '\0') {
+			executed = lua_engine_run_event(event_name, rid, oid);
+		}
+		if (!executed) {
+			executed = lua_engine_run_npc(nd->id, nd->exname, pos, rid, oid);
+		}
+		if (executed) {
+			return;
+		}
+	}
+
+	run_script(nd ? nd->u.scr.script : nullptr, pos, rid, oid);
+}
 
 const std::string StylistDatabase::getDefaultLocation(){
 	return std::string(db_path) + "/stylist.yml";
@@ -1271,7 +1290,7 @@ int32 npc_event_doall_sub(DBKey key, DBData *data, va_list ap)
 		if(rid) // a player may only have 1 script running at the same time
 			npc_event_sub(map_id2sd(rid),ev,key.str);
 		else
-			run_script(ev->nd->u.scr.script,ev->pos,rid,ev->nd->id);
+			npc_run_script(ev->nd, ev->pos, rid, ev->nd->id, key.str);
 		(*c)++;
 	}
 
@@ -1295,7 +1314,7 @@ static int32 npc_event_do_sub(DBKey key, DBData *data, va_list ap)
 
 	if( p && strcmpi(name, p) == 0 )
 	{
-		run_script(ev->nd->u.scr.script,ev->pos,rid,ev->nd->id);
+		npc_run_script(ev->nd, ev->pos, rid, ev->nd->id, p);
 		(*c)++;
 	}
 
@@ -1525,7 +1544,7 @@ TIMER_FUNC(npc_timerevent){
 	}
 
 	// Run the script
-	run_script(nd->u.scr.script,te->pos,nd->u.scr.rid,nd->id);
+	npc_run_script(nd, te->pos, nd->u.scr.rid, nd->id);
 
 	nd->u.scr.rid = old_rid; // Attached-rid should be restored anyway.
 	if( sd )
@@ -1686,7 +1705,7 @@ void npc_timerevent_quit(map_session_data* sd)
 			nd->u.scr.timer = ted->time;
 
 			//Execute label
-			run_script(nd->u.scr.script,ev->pos,sd->id,nd->id);
+			npc_run_script(nd, ev->pos, sd->id, nd->id, buf);
 
 			//Restore previous data.
 			nd->u.scr.rid = old_rid;
@@ -1784,7 +1803,7 @@ int32 npc_event_sub(map_session_data* sd, struct event_data* ev, const char* eve
 			return 2;
 		}
 	}
-	run_script(ev->nd->u.scr.script,ev->pos,sd->id,ev->nd->id);
+	npc_run_script(ev->nd, ev->pos, sd->id, ev->nd->id, eventname);
 	return 0;
 }
 
@@ -2050,7 +2069,7 @@ int32 npc_touch_areanpc2(mob_data *md)
 						break; // No OnTouchNPC Event
 					md->areanpc_id = mapdata->npc[i]->id;
 					id = md->id; // Stores Unique ID
-					run_script(ev->nd->u.scr.script, ev->pos, md->id, ev->nd->id);
+					npc_run_script(ev->nd, ev->pos, md->id, ev->nd->id, eventname);
 					if( map_id2md(id) == nullptr ) return 1; // Not Warped, but killed
 					break;
 			}
@@ -2268,7 +2287,7 @@ int32 npc_click(map_session_data* sd, npc_data* nd)
 #endif
 			break;
 		case NPCTYPE_SCRIPT:
-			run_script(nd->u.scr.script,0,sd->id,nd->id);
+			npc_run_script(nd, 0, sd->id, nd->id);
 			break;
 		case NPCTYPE_TOMB:
 			run_tomb(sd,nd);
@@ -2329,6 +2348,10 @@ bool npc_scriptcont(map_session_data* sd, int32 id, bool closing){
 	 **/
 	if( sd->progressbar.npc_id && DIFF_TICK(sd->progressbar.timeout,gettick()) > 0 )
 		return true;
+
+	if (script_config.npc_lua_enabled && lua_engine_continue_dialog(sd, id, closing)) {
+		return false;
+	}
 
 	if( sd->st == nullptr ){
 		return true;
@@ -3515,6 +3538,7 @@ int32 npc_unload(npc_data* nd, bool single) {
 	else if( nd->subtype == NPCTYPE_SCRIPT ) {
 		struct s_mapiterator* iter;
 		block_list* bl;
+		lua_engine_unregister_npc(nd->id);
 
 		if( single )
 			ev_db->foreach(ev_db,npc_unload_ev,nd->exname); //Clean up all events related
@@ -3596,6 +3620,11 @@ int32 npc_unload(npc_data* nd, bool single) {
 // NPC Source Files
 //
 
+static bool npc_is_lua_source(const char* path) {
+	size_t len = strlen(path);
+	return len >= 4 && strcmpi(path + (len - 4), ".lua") == 0;
+}
+
 /**
  * Adds a npc source file (or removes all)
  * @param name : file to add
@@ -3622,8 +3651,21 @@ int32 npc_addsrcfile(const char* name, bool loadscript)
 
 	npc_src_files.push_back(name);
 
-	if (loadscript)
+	if (loadscript) {
+		if (npc_is_lua_source(name)) {
+			if (!script_config.npc_lua_enabled) {
+				ShowWarning("npc_addsrcfile: Lua NPC parsing is disabled. Skipping '%s'.\n", name);
+				return 0;
+			}
+			return npc_parseluafile(name);
+		}
+
+		if (!script_config.npc_dsl_enabled) {
+			ShowWarning("npc_addsrcfile: DSL NPC parsing is disabled. Skipping '%s'.\n", name);
+			return 0;
+		}
 		return npc_parsesrcfile(name);
+	}
 
 	return 1;
 }
@@ -3649,7 +3691,19 @@ void npc_loadsrcfiles() {
 #ifdef DETAILED_LOADING_OUTPUT
 		ShowStatus("Loading NPC file: %s" CL_CLL "\r", file.c_str());
 #endif
-		npc_parsesrcfile(file.c_str());
+		if (npc_is_lua_source(file.c_str())) {
+			if (!script_config.npc_lua_enabled) {
+				ShowWarning("npc_loadsrcfiles: Lua NPC parsing is disabled. Skipping '%s'.\n", file.c_str());
+				continue;
+			}
+			npc_parseluafile(file.c_str());
+		} else {
+			if (!script_config.npc_dsl_enabled) {
+				ShowWarning("npc_loadsrcfiles: DSL NPC parsing is disabled. Skipping '%s'.\n", file.c_str());
+				continue;
+			}
+			npc_parsesrcfile(file.c_str());
+		}
 	}
 	int32 npc_total = npc_warp + npc_shop + npc_script;
 
@@ -3661,6 +3715,25 @@ void npc_loadsrcfiles() {
 		"\t-'" CL_WHITE "%d" CL_RESET "' Mobs Cached\n"
 		"\t-'" CL_WHITE "%d" CL_RESET "' Mobs Not Cached\n",
 		npc_total, npc_warp, npc_shop, npc_script, npc_mob, npc_cache_mob, npc_delay_mob);
+}
+
+int32 npc_validate_srcfiles_lua_only(void) {
+	int32 failed = 0;
+	int32 checked = 0;
+
+	ShowStatus("Validating Lua NPC source files only (DSL files are skipped)...\n");
+	for (const auto& file : npc_src_files) {
+		if (!npc_is_lua_source(file.c_str())) {
+			continue;
+		}
+		++checked;
+		if (!lua_engine_load_file(file.c_str())) {
+			++failed;
+		}
+	}
+
+	ShowStatus("Lua NPC validation done. checked=%d failed=%d\n", checked, failed);
+	return failed;
 }
 
 /// Parses and sets the name and exname of a npc.
@@ -4307,6 +4380,131 @@ int32 npc_convertlabel_db(DBKey key, DBData *data, va_list ap)
 	return 0;
 }
 
+int32 npc_lua_register_script(const LuaNpcDef& def, const char* filepath) {
+	const char* source = (filepath != nullptr && filepath[0] != '\0') ? filepath : "LUA";
+	const char* buffer = source;
+	const char* start = source;
+
+	int16 m = -1;
+	int16 x = def.x;
+	int16 y = def.y;
+	int16 dir = def.dir;
+
+	if (!def.map.empty() && def.map != "-") {
+		m = map_mapname2mapid(def.map.c_str());
+		if (m < 0) {
+			ShowError("npc_lua_register_script: Unknown map '%s' in file '%s'.\n", def.map.c_str(), source);
+			return 0;
+		}
+
+		map_data* mapdata = map_getmapdata(m);
+		if (mapdata == nullptr || x < 0 || x >= mapdata->xs || y < 0 || y >= mapdata->ys) {
+			ShowError("npc_lua_register_script: Invalid coordinates ('%d','%d') for map '%s' in file '%s'.\n",
+			          x, y, def.map.c_str(), source);
+			return 0;
+		}
+	}
+
+	std::string npc_name = def.name.empty() ? def.exname : def.name;
+	if (npc_name.empty()) {
+		ShowError("npc_lua_register_script: Script NPC missing name in file '%s'.\n", source);
+		return 0;
+	}
+
+	if (!def.exname.empty() && def.exname != npc_name) {
+		npc_name += "::" + def.exname;
+	}
+
+	npc_data* nd = npc_create_npc(m, x, y);
+	if (nd == nullptr) {
+		return 0;
+	}
+
+	npc_parsename(nd, npc_name.c_str(), start, buffer, source);
+	nd->class_ = (m == -1) ? JT_FAKENPC : def.sprite;
+	nd->speed = DEFAULT_NPC_WALK_SPEED;
+	nd->u.scr.script = nullptr;
+	nd->u.scr.xs = def.trigger_x;
+	nd->u.scr.ys = def.trigger_y;
+	nd->u.scr.label_list = nullptr;
+	nd->u.scr.label_list_num = 0;
+
+	const size_t label_count = def.events.size() + def.labels.size();
+	if (label_count > 0) {
+		nd->u.scr.label_list = static_cast<npc_label_list*>(aCalloc(label_count, sizeof(npc_label_list)));
+	}
+
+	auto push_label = [&](const LuaNpcDef::LuaLabelBinding& binding) {
+		if (binding.name.empty() || nd->u.scr.label_list == nullptr) {
+			return;
+		}
+
+		npc_label_list& label = nd->u.scr.label_list[nd->u.scr.label_list_num];
+		safestrncpy(label.name, binding.name.c_str(), sizeof(label.name));
+		label.pos = binding.pos > 0 ? binding.pos : (nd->u.scr.label_list_num + 1);
+		nd->u.scr.label_list_num++;
+	};
+
+	for (const LuaNpcDef::LuaLabelBinding& binding : def.events) {
+		push_label(binding);
+	}
+	for (const LuaNpcDef::LuaLabelBinding& binding : def.labels) {
+		push_label(binding);
+	}
+
+	++npc_script;
+	nd->type = BL_NPC;
+	nd->subtype = NPCTYPE_SCRIPT;
+
+	if (m >= 0) {
+		map_addnpc(m, nd);
+		unit_dataset(nd);
+		nd->ud.dir = static_cast<uint8>(dir);
+		npc_setcells(nd);
+		if (map_addblock(nd)) {
+			return 0;
+		}
+		if (nd->class_ != JT_FAKENPC) {
+			status_set_viewdata(nd, nd->class_);
+			if (map_getmapdata(nd->m)->users) {
+				clif_spawn(nd);
+			}
+		}
+	} else {
+		map_addiddb(nd);
+	}
+
+	strdb_put(npcname_db, nd->exname, nd);
+
+	if (!def.state.empty()) {
+		if (strcmpi(def.state.c_str(), "CLOAKED") == 0) {
+			nd->state = NPCVIEW_CLOAKON;
+		} else if (strcmpi(def.state.c_str(), "HIDDEN") == 0) {
+			nd->state = NPCVIEW_HIDEON;
+		} else if (strcmpi(def.state.c_str(), "DISABLED") == 0) {
+			nd->state = NPCVIEW_DISABLE;
+		} else {
+			ShowWarning("npc_lua_register_script: Invalid npc state '%s' in file '%s', defaulting to visible.\n",
+			            def.state.c_str(), source);
+		}
+
+		if (nd->state != NPCVIEW_ENABLE) {
+			npc_enable_target(*nd, 0, nd->state);
+		}
+	}
+
+	for (int32 i = 0; i < nd->u.scr.label_list_num; i++) {
+		if (npc_event_export(nd, i)) {
+			ShowWarning("npc_lua_register_script: duplicate event %s::%s (%s)\n",
+			            nd->exname, nd->u.scr.label_list[i].name, source);
+		}
+		npc_timerevent_export(nd, i);
+	}
+
+	nd->u.scr.timerid = INVALID_TIMER;
+	return nd->id;
+}
+
 // Skip the contents of a script.
 static const char* npc_skip_script(const char* start, const char* buffer, const char* filepath)
 {
@@ -4602,6 +4800,7 @@ const char* npc_parse_duplicate( char* w1, char* w2, char* w3, char* w4, const c
 			nd->u.scr.script = dnd->u.scr.script;
 			nd->u.scr.label_list = dnd->u.scr.label_list;
 			nd->u.scr.label_list_num = dnd->u.scr.label_list_num;
+			lua_engine_clone_npc(dnd->id, nd->id, nd->exname);
 			break;
 
 		case NPCTYPE_SHOP:
@@ -4767,7 +4966,7 @@ int32 npc_instanceinit(npc_data* nd)
 	snprintf(evname, ARRAYLENGTH(evname), "%s::%s", nd->exname, script_config.instance_init_event_name);
 
 	if( ( ev = (struct event_data*)strdb_get(ev_db, evname) ) )
-		run_script(nd->u.scr.script,ev->pos,0,nd->id);
+		npc_run_script(nd, ev->pos, 0, nd->id, evname);
 
 	return 0;
 }
@@ -4780,7 +4979,7 @@ int32 npc_instancedestroy(npc_data* nd)
 	snprintf(evname, ARRAYLENGTH(evname), "%s::%s", nd->exname, script_config.instance_destroy_event_name);
 
 	if( ( ev = (struct event_data*)strdb_get(ev_db, evname) ) )
-		run_script(nd->u.scr.script,ev->pos,0,nd->id);
+		npc_run_script(nd, ev->pos, 0, nd->id, evname);
 
 	return 0;
 }
@@ -5122,7 +5321,14 @@ int32 npc_do_atcmd_event(map_session_data* sd, const char* command, const char* 
 		return 2;
 	}
 
+	if (script_config.npc_lua_enabled && lua_engine_run_event(eventname, sd->id, ev->nd->id)) {
+		return 0;
+	}
+
 	st = script_alloc_state(ev->nd->u.scr.script, ev->pos, sd->id, ev->nd->id);
+	if (st == nullptr) {
+		return 0;
+	}
 	setd_sub_str( st, nullptr, ".@atcmd_command$", 0, command, nullptr );
 
 	// split atcmd parameters based on spaces
@@ -6264,6 +6470,7 @@ void do_clear_npc(void) {
  * Destructor
  *------------------------------------------*/
 void do_final_npc(void) {
+	lua_engine_final();
 	npc_clear_pathlist();
 	script_event.clear();
 	ev_db->destroy(ev_db, nullptr);
@@ -6323,6 +6530,7 @@ static void npc_debug_warps(void){
  *------------------------------------------*/
 void do_init_npc(void){
 	int32 i;
+	const bool script_only_mode = map_is_npc_script_only();
 
 	//Stock view data for normal npcs.
 	memset(&npc_viewdb, 0, sizeof(npc_viewdb));
@@ -6337,7 +6545,9 @@ void do_init_npc(void){
 	npc_path_db = strdb_alloc((DBOptions)(DB_OPT_BASE|DB_OPT_DUP_KEY|DB_OPT_RELEASE_DATA),80);
 #if PACKETVER >= 20131223
 	NPCMarketDB = strdb_alloc(DB_OPT_BASE, NPC_NAME_LENGTH+1);
-	npc_market_fromsql();
+	if (!script_only_mode) {
+		npc_market_fromsql();
+	}
 #endif
 
 	timer_event_ers = ers_new(sizeof(struct timer_event_data),"npc.cpp::timer_event_ers",ERS_OPT_NONE);
@@ -6346,13 +6556,17 @@ void do_init_npc(void){
 	npc_loadsrcfiles();
 
 	stylist_db.load();
-	barter_db.load();
+	if (!script_only_mode) {
+		barter_db.load();
+	}
 
 	// set up the events cache
 	npc_read_event_script();
 
 #if PACKETVER >= 20131223
-	npc_market_checkall();
+	if (!script_only_mode) {
+		npc_market_checkall();
+	}
 #endif
 
 	//Debug function to locate all endless loop warps.

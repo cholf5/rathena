@@ -53,7 +53,12 @@ add_executable(yamlupgrade)
 target_link_libraries(yamlupgrade PRIVATE tools)
 target_sources(yamlupgrade PRIVATE "yamlupgrade.cpp")
 
-set( TARGET_LIST ${TARGET_LIST} mapcache csv2yaml yaml2sql yamlupgrade  CACHE INTERNAL "" )
+# script2lua
+message( STATUS "Creating target script2lua" )
+add_executable(script2lua)
+target_sources(script2lua PRIVATE "script2lua.cpp")
+
+set( TARGET_LIST ${TARGET_LIST} mapcache csv2yaml yaml2sql yamlupgrade script2lua  CACHE INTERNAL "" )
 
 if( INSTALL_COMPONENT_RUNTIME )
 	cpack_add_component( Runtime_mapcache DESCRIPTION "mapcache generator" DISPLAY_NAME "mapcache" GROUP Runtime )
@@ -75,6 +80,11 @@ if( INSTALL_COMPONENT_RUNTIME )
 	install( TARGETS yamlupgrade
 		DESTINATION "."
 		COMPONENT Runtime_yamlupgrade
+	)
+	cpack_add_component( Runtime_script2lua DESCRIPTION "npc script converter" DISPLAY_NAME "script2lua" GROUP Runtime )
+	install( TARGETS script2lua
+		DESTINATION "."
+		COMPONENT Runtime_script2lua
 	)
 	install (TARGETS )
 endif( INSTALL_COMPONENT_RUNTIME )

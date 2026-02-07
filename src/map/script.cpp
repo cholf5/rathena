@@ -256,7 +256,10 @@ static DBMap* autobonus_db = nullptr; // char* script -> char* bytecode
 
 struct Script_Config script_config = {
 	1, // warn_func_mismatch_argtypes
-	1, 65535, 2048, //warn_func_mismatch_paramnum/check_cmdcount/check_gotocount
+	1, // warn_func_mismatch_paramnum
+	1, // npc_lua_enabled
+	1, // npc_dsl_enabled
+	65535, 2048, //check_cmdcount/check_gotocount
 	0, INT_MAX, // input_min_value/input_max_value
 	// NOTE: None of these event labels should be longer than <EVENT_NAME_LENGTH> characters
 	// PC related
@@ -4560,6 +4563,12 @@ int32 script_config_read(const char *cfgName)
 		}
 		else if(strcmpi(w1,"warn_func_mismatch_argtypes")==0) {
 			script_config.warn_func_mismatch_argtypes = config_switch(w2);
+		}
+		else if(strcmpi(w1,"npc_lua_enabled")==0) {
+			script_config.npc_lua_enabled = config_switch(w2);
+		}
+		else if(strcmpi(w1,"npc_dsl_enabled")==0) {
+			script_config.npc_dsl_enabled = config_switch(w2);
 		}
 		else if(strcmpi(w1,"import")==0){
 			script_config_read(w2);

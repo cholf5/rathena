@@ -30,12 +30,14 @@ YAML2SQL_OBJ = obj_all/yaml2sql.o
 
 YAMLUPGRADE_OBJ = obj_all/yamlupgrade.o
 
+SCRIPT2LUA_OBJ = obj_all/script2lua.o
+
 @SET_MAKE@
 
 #####################################################################
 .PHONY : all mapcache csv2yaml yaml2sql yamlupgrade clean help
 
-all: mapcache csv2yaml yaml2sql yamlupgrade
+all: mapcache csv2yaml yaml2sql yamlupgrade script2lua
 
 mapcache: obj_all $(MAPCACHE_OBJ) $(COMMON_DIR_OBJ)
 	@echo "	LD	$@"
@@ -53,16 +55,21 @@ yamlupgrade: obj_all $(YAMLUPGRADE_OBJ) $(COMMON_DIR_OBJ) $(RAPIDYAML_AR) $(YAML
 	@echo "	LD	$@"
 	@@CXX@ @LDFLAGS@ -o ../../yamlupgrade@EXEEXT@ $(YAMLUPGRADE_OBJ) $(COMMON_DIR_OBJ) ../common/obj/database.o $(RAPIDYAML_AR) $(YAML_CPP_AR) @LIBS@
 
+script2lua: obj_all $(SCRIPT2LUA_OBJ)
+	@echo "	LD	$@"
+	@@CXX@ @LDFLAGS@ -o ../../script2lua@EXEEXT@ $(SCRIPT2LUA_OBJ) @LIBS@
+
 clean:
 	@echo "	CLEAN	tool"
-	@rm -rf obj_all/*.o ../../mapcache@EXEEXT@ ../../csv2yaml@EXEEXT@ ../../yaml2sql@EXEEXT@ ../../yamlupgrade@EXEEXT@
+	@rm -rf obj_all/*.o ../../mapcache@EXEEXT@ ../../csv2yaml@EXEEXT@ ../../yaml2sql@EXEEXT@ ../../yamlupgrade@EXEEXT@ ../../script2lua@EXEEXT@
 
 help:
-	@echo "possible targets are 'mapcache' 'csv2yaml' 'yaml2sql' 'yamlupgrade' 'all' 'clean' 'help'"
+	@echo "possible targets are 'mapcache' 'csv2yaml' 'yaml2sql' 'yamlupgrade' 'script2lua' 'all' 'clean' 'help'"
 	@echo "'mapcache'     - mapcache generator"
 	@echo "'csv2yaml'     - converts TXT databases to YAML"
 	@echo "'yaml2sql'     - converts YAML databases to SQL"
 	@echo "'yamlupgrade'  - upgrades YAML databases to latest version"
+	@echo "'script2lua'   - converts NPC DSL TXT files to Lua wrappers with report"
 	@echo "'all'          - builds all above targets"
 	@echo "'clean'        - cleans builds and objects"
 	@echo "'help'         - outputs this message"
