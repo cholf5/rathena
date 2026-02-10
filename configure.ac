@@ -1407,12 +1407,14 @@ else
 	fi
 
 	if test "$HAVE_LUA" != "yes" ; then
-		LUA_OLD_LDFLAGS="$LDFLAGS" ; LDFLAGS="$LDFLAGS $LUA_LIBS"
+		LUA_OLD_LIBS="$LIBS" ; LIBS="$LIBS $LUA_LIBS"
 		LUA_OLD_CPPFLAGS="$CPPFLAGS" ; CPPFLAGS="$CPPFLAGS $LUA_CFLAGS"
 		AC_LINK_IFELSE([AC_LANG_PROGRAM(
 			[
+			extern "C" {
 			#include <lua.h>
 			#include <lauxlib.h>
+			}
 			],
 			[
 			lua_State *L = luaL_newstate();
@@ -1422,7 +1424,7 @@ else
 			[HAVE_LUA=""]
 		)
 		CPPFLAGS="$LUA_OLD_CPPFLAGS"
-		LDFLAGS="$LUA_OLD_LDFLAGS"
+		LIBS="$LUA_OLD_LIBS"
 	fi
 
 	AC_MSG_CHECKING([LUA 5.4 library (optional)])

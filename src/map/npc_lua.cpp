@@ -4,7 +4,9 @@
 #include "npc_lua.hpp"
 
 #include "lua_engine.hpp"
+#include "mob.hpp"
 #include "npc.hpp"
+#include "script.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -220,7 +222,30 @@ void collect_lua_script_bindings(lua_State* L, int table_index, std::vector<LuaN
 		def.state = table_get_string(L, -1, "state");
 		def.trigger_x = static_cast<int16>(table_get_int(L, -1, "trigger_x", -1));
 		def.trigger_y = static_cast<int16>(table_get_int(L, -1, "trigger_y", -1));
-		def.sprite = table_get_int(L, -1, "sprite", -1);
+
+		// Support both numeric and string sprite IDs
+		lua_getfield(L, -1, "sprite");
+		if (lua_isnumber(L, -1)) {
+			def.sprite = static_cast<int32>(lua_tointeger(L, -1));
+		} else if (lua_isstring(L, -1)) {
+			const char* sprite_name = lua_tostring(L, -1);
+			int64 constant_val = 0;
+			if (script_get_constant(sprite_name, &constant_val)) {
+				def.sprite = static_cast<int32>(constant_val);
+			} else {
+				// Try to find mob with same name
+				std::shared_ptr<s_mob_db> mob = mobdb_search_aegisname(sprite_name);
+				if (mob != nullptr) {
+					def.sprite = static_cast<int32>(mob->id);
+				} else {
+					ShowWarning("npc_lua: Invalid sprite constant '%s', defaulting to -1.\n", sprite_name);
+					def.sprite = -1;
+				}
+			}
+		} else {
+			def.sprite = -1;
+		}
+		lua_pop(L, 1);
 
 		lua_getfield(L, -1, "main");
 		if (lua_isfunction(L, -1)) {
@@ -528,6 +553,21 @@ void append_typed_shops(lua_State* L, int table_index, std::string& out) {
 		const std::string type = table_get_string(L, -1, "type", "shop");
 		const std::string name = table_get_string(L, -1, "name");
 		const std::string items = table_get_string(L, -1, "items");
+
+		// Get sprite - support both numeric and string constants (like scripts)
+		std::string sprite_str;
+		lua_getfield(L, -1, "sprite");
+		if (lua_isnumber(L, -1)) {
+			char buffer[64];
+			safesnprintf(buffer, sizeof(buffer), "%d", static_cast<int32>(lua_tointeger(L, -1)));
+			sprite_str = buffer;
+		} else if (lua_isstring(L, -1)) {
+			sprite_str = lua_tostring(L, -1);
+		} else {
+			sprite_str = "-1";  // Default to invisible if not specified
+		}
+		lua_pop(L, 1);
+
 		if (name.empty() || items.empty()) {
 			ShowError("npc_parseluafile: 'shops[%zu]' missing required fields (name/items).\n", i);
 			lua_pop(L, 1);
@@ -548,7 +588,8 @@ void append_typed_shops(lua_State* L, int table_index, std::string& out) {
 		}
 
 		std::ostringstream line;
-		line << placement << "\t" << type << "\t" << name << "\t" << items;
+		line << placement << "\t" << type << "\t" << name << "\t" << sprite_str << "," << items;
+		ShowDebug("npc_lua: shop line: %s\n", line.str().c_str());
 		append_with_newline(out, line.str());
 		lua_pop(L, 1);
 	}
@@ -603,6 +644,7 @@ void append_typed_duplicates(lua_State* L, int table_index, std::string& out, co
 
 		std::ostringstream line;
 		line << placement << "\tduplicate(" << source << ")\t" << name << "\t" << sprite;
+		ShowDebug("npc_lua: duplicate line: %s\n", line.str().c_str());
 		append_with_newline(out, line.str());
 		lua_pop(L, 1);
 	}

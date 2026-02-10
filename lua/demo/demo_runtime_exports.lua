@@ -165,6 +165,7 @@ return {
 			dir = 0,
 			type = "shop",
 			name = DEMO_SHOP,
+			sprite = "1_M_MERCHANT",
 			items = "501:2,502:10,503:100",
 		},
 	},
@@ -175,7 +176,7 @@ return {
 			y = 173,
 			dir = 4,
 			name = DEMO_NPC,
-			sprite = 1,
+			sprite = "1_M_JOBGUIDER",
 			main = function(ctx)
 
 
@@ -223,7 +224,7 @@ return {
 			y = 173,
 			dir = 2,
 			name = DEMO_WALKER,
-			sprite = 1,
+			sprite = "4_M_HUMAN_01",
 			main = function(ctx)
 				mes("[Lua Demo Walker]")
 				mes("Used by demo_runtime_exports.lua for movenpc/unitwalk tests.")
@@ -238,7 +239,7 @@ return {
 			y = 173,
 			dir = 2,
 			name = DEMO_UNLOAD_TARGET,
-			sprite = 1,
+			sprite = "4_F_TELEPORTER",
 			main = function(ctx)
 				mes("[Lua Demo Unload Target]")
 				mes("This NPC is intentionally used by unloadnpc() demo.")

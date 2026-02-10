@@ -85,7 +85,7 @@ return {
 			y = 175,
 			dir = 4,
 			name = "Lua Demo Advanced#lua",
-			sprite = 1,
+			sprite = 84,
 			main = function(ctx)
 				local visits = inc_session_counter(_ENV, 1)
 

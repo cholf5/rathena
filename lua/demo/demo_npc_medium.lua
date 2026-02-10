@@ -22,7 +22,7 @@ return {
 			y = 175,
 			dir = 4,
 			name = "Lua Demo Medium#lua",
-			sprite = 1,
+			sprite = "1_M_MERCHANT",
 			main = function(ctx)
 				local visits = read_visit_count(_ENV) + 1
 				write_visit_count(_ENV, visits)

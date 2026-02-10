@@ -13343,7 +13343,10 @@ void clif_parse_NpcNextClicked(int32 fd,map_session_data *sd)
 		sd->idletime = last_tick;
 	}
 
-	npc_scriptcont(sd,RFIFOL(fd,packet_db[RFIFOW(fd,0)].pos[0]), false);
+	int32 npc_id = RFIFOL(fd,packet_db[RFIFOW(fd,0)].pos[0]);
+	ShowDebug("clif_parse_NpcNextClicked: fd=%d, sd=%p, npc_id=%d\n", fd, (void*)sd, npc_id);
+
+	npc_scriptcont(sd, npc_id, false);
 }
 
 
