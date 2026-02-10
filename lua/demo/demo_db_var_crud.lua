@@ -116,7 +116,7 @@ return {
 			y = 173,
 			dir = 4,
 			name = NPC_NAME,
-			sprite = 1,
+			sprite = 112,
 			main = function(ctx)
 
 

@@ -451,6 +451,14 @@ void lua_attach_player(LuaExecutionContext& execution) {
 	sd->npc_id = execution.oid;
 	sd->state.disable_atcommand_on_npc =
 	    battle_config.atcommand_disable_npc && !pc_has_permission(sd, PC_PERM_ENABLE_COMMAND);
+
+#ifdef SECURE_NPCTIMEOUT
+	// Set up NPC idle timeout timer for Lua scripts, similar to DSL scripts
+	if (sd->npc_idle_timer == INVALID_TIMER && !sd->state.ignoretimeout) {
+		sd->npc_idle_timer = add_timer(gettick() + (SECURE_NPCTIMEOUT_INTERVAL * 1000),
+		                                npc_secure_timeout_timer, sd->id, 0);
+	}
+#endif
 }
 
 void lua_detach_player(const LuaExecutionContext& execution, bool dequeue_event, bool clear_cutin) {
@@ -466,6 +474,14 @@ void lua_detach_player(const LuaExecutionContext& execution, bool dequeue_event,
 	if (clear_cutin) {
 		clif_cutin(*sd, "", 255);
 	}
+
+#ifdef SECURE_NPCTIMEOUT
+	// Clear NPC idle timeout timer when detaching player
+	if (sd->npc_idle_timer != INVALID_TIMER) {
+		delete_timer(sd->npc_idle_timer, npc_secure_timeout_timer);
+		sd->npc_idle_timer = INVALID_TIMER;
+	}
+#endif
 
 	if (sd->state.using_fake_npc) {
 		uint32 clear_npc = sd->npc_id > 0 ? static_cast<uint32>(sd->npc_id) : static_cast<uint32>(execution.oid);
@@ -517,9 +533,14 @@ void lua_remove_pending_dialog(const LuaExecutionContext& execution) {
 
 void lua_set_pending_dialog(uint32 instance_id, const LuaExecutionContext& execution) {
 	if (execution.rid <= 0 || execution.oid <= 0) {
+		ShowDebug("lua_set_pending_dialog: skipping instance %u, rid=%d, oid=%d\n",
+		          instance_id, execution.rid, execution.oid);
 		return;
 	}
-	g_pending_dialog_instances[lua_dialog_key(execution.rid, execution.oid)] = instance_id;
+	uint64 key = lua_dialog_key(execution.rid, execution.oid);
+	ShowDebug("lua_set_pending_dialog: instance %u, key=%llu (rid=%d, oid=%d)\n",
+	          instance_id, key, execution.rid, execution.oid);
+	g_pending_dialog_instances[key] = instance_id;
 }
 
 void lua_dispose_instance(LuaRuntimeInstance& instance, bool dequeue_event) {
@@ -701,6 +722,7 @@ int32 lua_env_index(lua_State* L) {
 
 	const std::string key = lua_tostring(L, 2);
 
+	// First check builtins
 	if (g_builtin_table_ref != LUA_NOREF) {
 		lua_rawgeti(L, LUA_REGISTRYINDEX, g_builtin_table_ref);
 		lua_getfield(L, -1, key.c_str());
@@ -711,6 +733,22 @@ int32 lua_env_index(lua_State* L) {
 		lua_pop(L, 2);
 	}
 
+	// Then check script variables
+	if (lua_has_variable_exact(key)) {
+		lua_push_variable(key, L);
+		return 1;
+	}
+
+	// Fallback to global environment for standard library access (string, math, table, etc.)
+	lua_pushglobaltable(L);
+	lua_getfield(L, -1, key.c_str());
+	if (!lua_isnil(L, -1)) {
+		lua_remove(L, -2);
+		return 1;
+	}
+	lua_pop(L, 2);
+
+	// Finally use the default lua_push_variable behavior (returns 0 or default value)
 	lua_push_variable(key, L);
 	return 1;
 }
@@ -2775,8 +2813,14 @@ bool lua_resume_instance_internal(uint32 instance_id, int32 nargs) {
 
 	g_execution_stack.push_back(instance.execution);
 
+	ShowDebug("lua_resume_instance_internal: resuming instance %u ('%s') with %d args\n",
+	          instance_id, instance.runtime_name.c_str(), nargs);
+
 	int32 result_count = 0;
 	const int32 status = lua_resume(co, g_lua_state, nargs, &result_count);
+
+	ShowDebug("lua_resume_instance_internal: resume returned status=%d, result_count=%d\n",
+	          status, result_count);
 
 	if (g_execution_stack.empty()) {
 		ShowError("lua_engine: execution stack underflow while resuming NPC '%s' instance %u.\n",
@@ -3289,12 +3333,23 @@ bool lua_engine_resume_instance(uint32 instance_id) {
 bool lua_engine_continue_dialog(map_session_data* sd, int32 npc_id, bool closing) {
 #if defined(HAVE_LUA) || defined(WITH_LUA)
 	if (g_lua_state == nullptr || sd == nullptr || npc_id <= 0) {
+		ShowDebug("lua_engine_continue_dialog: invalid params (lua=%p, sd=%p, npc=%d)\n",
+		          (void*)g_lua_state, (void*)sd, npc_id);
 		return false;
 	}
 
 	const uint64 key = lua_dialog_key(sd->id, npc_id);
+	ShowDebug("lua_engine_continue_dialog: looking for key=%llu (sd->id=%d, npc_id=%d, closing=%d)\n",
+	          key, sd->id, npc_id, closing);
+	ShowDebug("lua_engine_continue_dialog: pending_dialogs count=%zu\n", g_pending_dialog_instances.size());
+
 	auto pending_it = g_pending_dialog_instances.find(key);
 	if (pending_it == g_pending_dialog_instances.end()) {
+		ShowDebug("lua_engine_continue_dialog: no pending dialog instance for key %llu\n", key);
+		// 打印所有待处理的对话
+		for (auto& p : g_pending_dialog_instances) {
+			ShowDebug("  - pending key=%llu -> instance=%u\n", p.first, p.second);
+		}
 		return false;
 	}
 
@@ -3313,6 +3368,9 @@ bool lua_engine_continue_dialog(map_session_data* sd, int32 npc_id, bool closing
 	}
 
 	LuaWaitType wait_type = instance.execution.wait_type;
+	ShowDebug("lua_engine_continue_dialog: resuming instance %u, wait_type=%d, closing=%d\n",
+	          instance_id, (int)wait_type, closing);
+
 	if (wait_type == LuaWaitType::CloseEnd) {
 		lua_erase_instance(instance_id, true);
 		return true;
@@ -3376,6 +3434,14 @@ bool lua_engine_continue_dialog(map_session_data* sd, int32 npc_id, bool closing
 
 	lua_remove_pending_dialog(instance.execution);
 	lua_clear_wait_state(instance.execution);
+
+#ifdef SECURE_NPCTIMEOUT
+	// Update NPC idle timeout timer when continuing dialog
+	if (!closing && sd->npc_idle_timer != INVALID_TIMER && !sd->state.ignoretimeout) {
+		sd->npc_idle_tick = gettick(); // Update the last NPC iteration
+	}
+#endif
+
 	return lua_resume_instance_internal(instance_id, nargs);
 #else
 	(void)sd;

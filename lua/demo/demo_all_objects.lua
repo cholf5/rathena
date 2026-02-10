@@ -44,6 +44,7 @@ return {
 			dir = 0,
 			type = "shop",
 			name = "Lua Demo Shop",
+			sprite = "1_M_MERCHANT",
 			items = "501:2,502:10,503:100",
 		},
 	},
@@ -54,7 +55,7 @@ return {
 			y = 175,
 			dir = 4,
 			name = "Lua Demo Simple#lua",
-			sprite = 1,
+			sprite = "1_M_JOBGUIDER",
 			main = function(ctx)
 				mes("[Lua Demo: Simple]")
 				mes("This file demonstrates every top-level Lua object type.")
@@ -79,7 +80,7 @@ return {
 			dir = 4,
 			source = "Lua Demo Simple#lua",
 			name = "Lua Demo Simple Copy#lua",
-			view = "1",
+			view = "1_M_MERCHANT",
 		},
 	},
 	functions = {

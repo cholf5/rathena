@@ -2309,20 +2309,25 @@ int32 npc_click(map_session_data* sd, npc_data* nd)
  *
  *------------------------------------------*/
 bool npc_scriptcont(map_session_data* sd, int32 id, bool closing){
+	ShowDebug("npc_scriptcont: ENTER sd=%p, id=%d, closing=%d\n", (void*)sd, id, closing);
+
 	block_list *target = map_id2bl(id);
 	npc_data* nd = BL_CAST( BL_NPC, target );
 
 	nullpo_retr(true, sd);
 
 #ifdef SECURE_NPCTIMEOUT
-	if( !closing && sd->npc_idle_timer == INVALID_TIMER && !sd->state.ignoretimeout )
+	if( !closing && sd->npc_idle_timer == INVALID_TIMER && !sd->state.ignoretimeout ) {
+		ShowDebug("npc_scriptcont: SECURE_NPCTIMEOUT check failed (idle_timer=%d, ignoretimeout=%d)\n",
+		          sd->npc_idle_timer, sd->state.ignoretimeout);
 		return true;
+	}
 #endif
 
 	if( id != sd->npc_id ){
 		TBL_NPC* nd_sd = (TBL_NPC*)map_id2bl(sd->npc_id);
 
-		ShowDebug("npc_scriptcont: %s (sd->npc_id=%d) is not %s (id=%d).\n",
+		ShowDebug("npc_scriptcont: NPC ID mismatch! %s (sd->npc_id=%d) is not %s (id=%d).\n",
 			nd_sd?(char*)nd_sd->name:"'Unknown NPC'", (int32)sd->npc_id,
 			nd?(char*)nd->name:"'Unknown NPC'", (int32)id);
 		return true;
@@ -2349,11 +2354,18 @@ bool npc_scriptcont(map_session_data* sd, int32 id, bool closing){
 	if( sd->progressbar.npc_id && DIFF_TICK(sd->progressbar.timeout,gettick()) > 0 )
 		return true;
 
+	ShowDebug("npc_scriptcont: sd=%p, id=%d, closing=%d, npc_lua_enabled=%d, sd->st=%p\n",
+	          (void*)sd, id, closing, script_config.npc_lua_enabled, (void*)(sd ? sd->st : nullptr));
+
 	if (script_config.npc_lua_enabled && lua_engine_continue_dialog(sd, id, closing)) {
+		ShowDebug("npc_scriptcont: lua_engine_continue_dialog returned true\n");
 		return false;
 	}
 
+	ShowDebug("npc_scriptcont: lua_engine_continue_dialog returned false or disabled, checking sd->st\n");
+
 	if( sd->st == nullptr ){
+		ShowDebug("npc_scriptcont: sd->st is null, returning true\n");
 		return true;
 	}
 
@@ -4422,6 +4434,8 @@ int32 npc_lua_register_script(const LuaNpcDef& def, const char* filepath) {
 
 	npc_parsename(nd, npc_name.c_str(), start, buffer, source);
 	nd->class_ = (m == -1) ? JT_FAKENPC : def.sprite;
+	ShowDebug("npc_lua_register_script: NPC '%s' sprite=%d, class_=%d, m=%d\n",
+	          npc_name.c_str(), def.sprite, nd->class_, m);
 	nd->speed = DEFAULT_NPC_WALK_SPEED;
 	nd->u.scr.script = nullptr;
 	nd->u.scr.xs = def.trigger_x;
